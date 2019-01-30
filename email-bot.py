@@ -2,6 +2,7 @@ from __future__ import print_function
 import base64
 import email
 import pickle
+import re
 import os.path
 from apiclient import errors
 from googleapiclient.discovery import build
@@ -83,6 +84,10 @@ def GetMimeMessage(service, user_id, msg_id):
   except errors.HttpError as  error:
     print('An error occurred: %s' % error)
 
+def parseZdrofit(body):
+    pattern = re.compile(r"(?<=\*)(\w.*?)(?=\*)")
+    return pattern.findall(body)
+
 def main():
     """Shows basic usage of the Gmail API.
     Lists the user's Gmail labels.
@@ -113,7 +118,8 @@ def main():
 
     for message in messages:
         msg = GetMimeMessage(service,user_id='me', msg_id = message['id'])
-        print((message['id'],get_payload_decode(msg)))
+        body = get_payload_decode(msg)
+        print((message['id'],parseZdrofit(body)))
 
 if __name__ == '__main__':
     main()
