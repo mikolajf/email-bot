@@ -1,5 +1,6 @@
 from __future__ import print_function
 import base64
+import datetime
 import email
 import pickle
 import re
@@ -9,8 +10,11 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
+from pdb import set_trace as bp
+
 # If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly',
+'https://www.googleapis.com/auth/calendar.events']
 
 def ListMessagesMatchingQuery(service, user_id, query=''):
   """List all Messages of the user's mailbox matching the query.
@@ -116,10 +120,45 @@ def main():
     # Call the Gmail API
     messages = ListMessagesMatchingQuery(service,user_id='me',query='from:mikolaj.fido@gmail.com subject:"Potwierdzenie rezerwacji')
 
-    for message in messages:
-        msg = GetMimeMessage(service,user_id='me', msg_id = message['id'])
-        body = get_payload_decode(msg)
-        print((message['id'],parseZdrofit(body)))
+    saved_events = []
+    if os.path.exists("events.pickle"):
+        with open("events.pickle",'rb') as rfp: 
+            saved_events = pickle.load(rfp)
+
+    messages = [message for message in messages if message['id'] not in saved_events]
+
+    if messages:
+        calendar_service = build('calendar', 'v3', credentials=creds)
+
+        for message in messages:
+            msg = GetMimeMessage(service,user_id='me', msg_id = message['id'])
+            body = get_payload_decode(msg)
+            event_fields = parseZdrofit(body)
+
+            start_time = datetime.datetime.strptime(event_fields[1] + " " + event_fields[2] ,"%d-%m-%Y %H:%M")
+            end_time = start_time + datetime.timedelta(minutes = 90)
+
+            event = {
+                'summary': event_fields[0],
+                'start': {
+                    'dateTime': start_time.isoformat("T"),
+                    'timeZone': 'Europe/Warsaw',
+                },
+                'end': {
+                    'dateTime': end_time.isoformat("T"),
+                    'timeZone': 'Europe/Warsaw',
+                },
+                'reminders': {'useDefault': True},
+            }
+
+            saved_events.append(message['id'])
+            event = calendar_service.events().insert(calendarId='2grrqio5jk5iudqe4m9p739pqk@group.calendar.google.com', body=event).execute()
+
+        with open("events.pickle",'wb') as wfp:
+            pickle.dump(saved_events, wfp)
+
+    else:
+        print("No new mails.")
 
 if __name__ == '__main__':
     main()
