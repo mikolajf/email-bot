@@ -2,6 +2,7 @@ from __future__ import print_function
 import base64
 import datetime
 import email
+import json
 import pickle
 import re
 import os.path
@@ -152,7 +153,11 @@ def main():
             }
 
             saved_events.append(message['id'])
-            event = calendar_service.events().insert(calendarId='2grrqio5jk5iudqe4m9p739pqk@group.calendar.google.com', body=event).execute()
+
+            with open('calendar_id.json') as f: #need to handle it differently, stupid one
+                calendarId = json.load(f)["calendarId"]
+
+            event = calendar_service.events().insert(calendarId=calendarId, body=event).execute()
 
         with open("events.pickle",'wb') as wfp:
             pickle.dump(saved_events, wfp)
