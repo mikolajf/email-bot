@@ -93,7 +93,7 @@ def GetMimeMessage(service, user_id, msg_id):
   except errors.HttpError as  error:
     print('An error occurred: %s' % error)
 
-def parseZdrofit(body):
+def parseBoldFields(body):
     pattern = re.compile(r"(?<=\*)(\w.*?)(?=\*)")
     return pattern.findall(body)
 
@@ -130,45 +130,56 @@ def main():
                 with open("events.pickle",'rb') as rfp: 
                     saved_events = pickle.load(rfp)
 
-            # query
-            # after:
+            fromMail = personals['fromMail'] # an email from where mails are forwarded
 
+            after = " after:" + max([v['msg_time'] for k,v in saved_events.items()]).strftime("%Y/%m/%d") if len(saved_events) else ''
 
-            messages = ListMessagesMatchingQuery(service,user_id='me',query='from:mikolaj.fido@gmail.com subject:"Potwierdzenie rezerwacji')
+            query = f"from:{fromMail}{after} {{subject:'Potwierdzenie rezerwacji' subject:'Potwierdzenie zapisu'}}" 
+
+            messages = ListMessagesMatchingQuery(service,user_id='me',query=query)
             messages = [message for message in messages if message['id'] not in saved_events.keys()]
+            print(messages)
 
             if messages:
                 calendar_service = build('calendar', 'v3', credentials=creds)
 
                 for message in messages:
                     msg = GetMimeMessage(service,user_id='me', msg_id = message['id'])
-                    # bp()
                     body = get_payload_decode(msg)
-                    event_fields = parseZdrofit(body)
 
-                    start_time = datetime.datetime.strptime(event_fields[1] + " " + event_fields[2] ,"%d-%m-%Y %H:%M")
-                    end_time = start_time + datetime.timedelta(minutes = 90)
+                    event_fields = parseBoldFields(body)
 
-                    event = {
-                        'summary': event_fields[0],
-                        'start': {
-                            'dateTime': start_time.isoformat("T"),
-                            'timeZone': 'Europe/Warsaw',
-                        },
-                        'end': {
-                            'dateTime': end_time.isoformat("T"),
-                            'timeZone': 'Europe/Warsaw',
-                        },
-                        'reminders': {'useDefault': True},
-                    }
+                    if "Zdrofit" in body:
+                        summary = event_fields[0]
+                        start_time = datetime.datetime.strptime(event_fields[1] + " " + event_fields[2] ,"%d-%m-%Y %H:%M")
+                        end_time = start_time + datetime.timedelta(minutes = 90)
+                    elif "Siatkówka" in body:
+                        summary = event_fields[1]
+                        start_time = datetime.datetime.strptime(event_fields[3] + " " + event_fields[2] ,"%Y-%m-%d %H:%M")
+                        end_time = start_time + datetime.timedelta(minutes = 120)
 
-                    event = calendar_service.events().insert(calendarId=personals['calendarId'], body=event).execute()
-                    print(f"Calendar event id={event['id']} added: {event_fields[0]} starting at {start_time.isoformat('T')}.")
+                    if event_fields:
+                        event = {
+                            'summary': summary,
+                            'start': {
+                                'dateTime': start_time.isoformat("T"),
+                                'timeZone': 'Europe/Warsaw',
+                            },
+                            'end': {
+                                'dateTime': end_time.isoformat("T"),
+                                'timeZone': 'Europe/Warsaw',
+                            },
+                            'reminders': {'useDefault': True},
+                        }
 
-                    saved_events[message['id']] = {
-                        "msg_time": datetime.datetime.strptime(msg['Date'],"%a, %d %b %Y %H:%M:%S %z"),
-                        "event_id": event['id']
-                    }
+                        event = calendar_service.events().insert(calendarId=personals['calendarId'], body=event).execute()
+                        print(f"Calendar event id={event['id']} added: {summary} starting at {start_time.isoformat('T')}.")
+
+                        saved_events[message['id']] = {
+                            "msg_time": datetime.datetime.strptime(msg['Date'],"%a, %d %b %Y %H:%M:%S %z"),
+                            "event_id": event['id'],
+                            "event_time": start_time
+                        }
 
                 with open("events.pickle",'wb') as wfp:
                     pickle.dump(saved_events, wfp)
@@ -176,7 +187,8 @@ def main():
             else:
                 print("No new mails.")
 
-        time.sleep(60)
+            time.sleep(5)
+
     except KeyboardInterrupt:
         print('Code interrupted!')
 
