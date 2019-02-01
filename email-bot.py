@@ -12,7 +12,10 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-# from pdb import set_trace as bp
+from pdb import set_trace as bp
+
+with open('personals.json','r') as f:
+    personals = json.load(f)
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly',
@@ -122,20 +125,24 @@ def main():
             service = build('gmail', 'v1', credentials=creds)
 
             # Call the Gmail API
-            messages = ListMessagesMatchingQuery(service,user_id='me',query='from:mikolaj.fido@gmail.com subject:"Potwierdzenie rezerwacji')
-
-            saved_events = []
+            saved_events = {}
             if os.path.exists("events.pickle"):
                 with open("events.pickle",'rb') as rfp: 
                     saved_events = pickle.load(rfp)
 
-            messages = [message for message in messages if message['id'] not in saved_events]
+            # query
+            # after:
+
+
+            messages = ListMessagesMatchingQuery(service,user_id='me',query='from:mikolaj.fido@gmail.com subject:"Potwierdzenie rezerwacji')
+            messages = [message for message in messages if message['id'] not in saved_events.keys()]
 
             if messages:
                 calendar_service = build('calendar', 'v3', credentials=creds)
 
                 for message in messages:
                     msg = GetMimeMessage(service,user_id='me', msg_id = message['id'])
+                    # bp()
                     body = get_payload_decode(msg)
                     event_fields = parseZdrofit(body)
 
@@ -155,12 +162,13 @@ def main():
                         'reminders': {'useDefault': True},
                     }
 
-                    saved_events.append(message['id'])
+                    event = calendar_service.events().insert(calendarId=personals['calendarId'], body=event).execute()
+                    print(f"Calendar event id={event['id']} added: {event_fields[0]} starting at {start_time.isoformat('T')}.")
 
-                    with open('calendar_id.json') as f: #need to handle it differently, stupid one
-                        calendarId = json.load(f)["calendarId"]
-
-                    event = calendar_service.events().insert(calendarId=calendarId, body=event).execute()
+                    saved_events[message['id']] = {
+                        "msg_time": datetime.datetime.strptime(msg['Date'],"%a, %d %b %Y %H:%M:%S %z"),
+                        "event_id": event['id']
+                    }
 
                 with open("events.pickle",'wb') as wfp:
                     pickle.dump(saved_events, wfp)
@@ -168,9 +176,9 @@ def main():
             else:
                 print("No new mails.")
 
-        time.sleep(1)
+        time.sleep(60)
     except KeyboardInterrupt:
-        print('interrupted!')
+        print('Code interrupted!')
 
 if __name__ == '__main__':
     main()
