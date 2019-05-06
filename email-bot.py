@@ -93,9 +93,9 @@ def GetMimeMessage(service, user_id, msg_id):
   except errors.HttpError as  error:
     print('An error occurred: %s' % error)
 
-def parseBoldFields(body):
-    pattern = re.compile(r"(?<=\*)(\w.*?)(?=\*)")
-    return pattern.findall(body)
+def parseZdrofit(body):
+    pattern = re.compile(r"zajęć (.*),.*(\d{2}-\d{2}-\d{4}).*(\d{2}:\d{2})")
+    return pattern.findall(body)[0]
 
 def main():
     """Shows basic usage of the Gmail API.
@@ -130,13 +130,12 @@ def main():
                 with open("events.pickle",'rb') as rfp: 
                     saved_events = pickle.load(rfp)
 
-            fromMail = personals['fromMail'] # an email from where mails are forwarded
+            after = "after:" + max([v['msg_time'] for k,v in saved_events.items()]).strftime("%Y/%m/%d") if len(saved_events) else ''
 
-            after = " after:" + max([v['msg_time'] for k,v in saved_events.items()]).strftime("%Y/%m/%d") if len(saved_events) else ''
-
-            query = f"from:{fromMail}{after} {{subject:'Potwierdzenie rezerwacji' subject:'Potwierdzenie zapisu'}}" 
+            query = f"from:zdrofitinfo@zdrofit.pl {after} subject:'Potwierdzenie rezerwacji'" 
 
             messages = ListMessagesMatchingQuery(service,user_id='me',query=query)
+
             messages = [message for message in messages if message['id'] not in saved_events.keys()]
             print(messages)
 
@@ -147,16 +146,15 @@ def main():
                     msg = GetMimeMessage(service,user_id='me', msg_id = message['id'])
                     body = get_payload_decode(msg)
 
-                    event_fields = parseBoldFields(body)
-
                     if "Zdrofit" in body:
+                        event_fields = parseZdrofit(body)
                         summary = event_fields[0]
                         start_time = datetime.datetime.strptime(event_fields[1] + " " + event_fields[2] ,"%d-%m-%Y %H:%M")
                         end_time = start_time + datetime.timedelta(minutes = 90)
-                    elif "Siatkówka" in body:
-                        summary = event_fields[1]
-                        start_time = datetime.datetime.strptime(event_fields[3] + " " + event_fields[2] ,"%Y-%m-%d %H:%M")
-                        end_time = start_time + datetime.timedelta(minutes = 120)
+                    # elif "Siatkówka" in body:
+                    #     summary = event_fields[1]
+                    #     start_time = datetime.datetime.strptime(event_fields[3] + " " + event_fields[2] ,"%Y-%m-%d %H:%M")
+                    #     end_time = start_time + datetime.timedelta(minutes = 120)
 
                     if event_fields:
                         event = {
